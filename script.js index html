@@ -1,0 +1,276 @@
+/* =========================================================
+   DAIRU STORE — script.js
+   This file does 3 jobs:
+   1. Show the products on the page (and filter them when searching)
+   2. Manage the shopping cart (add, remove, change quantity, save it)
+   3. Handle the checkout form
+   ========================================================= */
+
+/* ---------------------------------------------------------
+   1. PRODUCT DATA
+   This is just a list (an "array") of objects. Each object is
+   one product. To add a new product later, copy one of these
+   blocks and change the details — see the README explanation.
+   --------------------------------------------------------- */
+const products = [
+  { id: 1, name: "Exercise Books (Pack of 5)", price: 500, icon: "📓" },
+  { id: 2, name: "Ballpoint Pens (Pack of 5)", price: 300, icon: "🖊️" },
+  { id: 3, name: "Pencils (Pack of 6)", price: 250, icon: "✏️" },
+  { id: 4, name: "Scientific Calculator", price: 4500, icon: "🧮" },
+  { id: 5, name: "School Backpack", price: 8000, icon: "🎒" },
+  { id: 6, name: "Mathematical Set", price: 1200, icon: "📐" },
+  { id: 7, name: "Ruler (30cm)", price: 150, icon: "📏" },
+  { id: 8, name: "Eraser", price: 100, icon: "🧽" },
+];
+
+/* ---------------------------------------------------------
+   2. GRAB REFERENCES TO THE HTML ELEMENTS WE NEED
+   Doing this once at the top keeps the rest of the code short.
+   --------------------------------------------------------- */
+const productGrid = document.getElementById("productGrid");
+const noResults = document.getElementById("noResults");
+const searchInput = document.getElementById("searchInput");
+
+const cartBtn = document.getElementById("cartBtn");
+const cartCount = document.getElementById("cartCount");
+const cartPanel = document.getElementById("cartPanel");
+const cartOverlay = document.getElementById("cartOverlay");
+const closeCart = document.getElementById("closeCart");
+const cartItemsEl = document.getElementById("cartItems");
+const cartTotalEl = document.getElementById("cartTotal");
+
+const checkoutBtn = document.getElementById("checkoutBtn");
+const checkoutOverlay = document.getElementById("checkoutOverlay");
+const closeCheckout = document.getElementById("closeCheckout");
+const checkoutForm = document.getElementById("checkoutForm");
+const modalTotalEl = document.getElementById("modalTotal");
+const orderSuccess = document.getElementById("orderSuccess");
+const successClose = document.getElementById("successClose");
+
+const menuToggle = document.getElementById("menuToggle");
+const mainNav = document.getElementById("mainNav");
+
+/* ---------------------------------------------------------
+   3. FORMAT PRICES AS NAIRA
+   Turns 4500 into "₦4,500" so numbers are easy to read.
+   --------------------------------------------------------- */
+function formatNaira(amount) {
+  return "₦" + amount.toLocaleString("en-NG");
+}
+
+/* ---------------------------------------------------------
+   4. THE CART
+   The cart is just an array stored in a variable, e.g.:
+   [ { id: 1, quantity: 2 }, { id: 4, quantity: 1 } ]
+   We save/load it from localStorage so it survives a page refresh.
+   --------------------------------------------------------- */
+let cart = loadCart();
+
+function loadCart() {
+  const saved = localStorage.getItem("dairuCart");
+  return saved ? JSON.parse(saved) : [];
+}
+
+function saveCart() {
+  localStorage.setItem("dairuCart", JSON.stringify(cart));
+}
+
+// Add a product to the cart, or increase its quantity if it's already there
+function addToCart(productId) {
+  const existing = cart.find((item) => item.id === productId);
+  if (existing) {
+    existing.quantity += 1;
+  } else {
+    cart.push({ id: productId, quantity: 1 });
+  }
+  saveCart();
+  renderCart();
+}
+
+// Change the quantity of a cart item (used by the +/- buttons)
+function changeQuantity(productId, delta) {
+  const item = cart.find((item) => item.id === productId);
+  if (!item) return;
+
+  item.quantity += delta;
+
+  if (item.quantity <= 0) {
+    cart = cart.filter((item) => item.id !== productId); // remove if it hits 0
+  }
+  saveCart();
+  renderCart();
+}
+
+// Remove an item from the cart completely
+function removeFromCart(productId) {
+  cart = cart.filter((item) => item.id !== productId);
+  saveCart();
+  renderCart();
+}
+
+// Add up the price of everything in the cart
+function getCartTotal() {
+  return cart.reduce((total, item) => {
+    const product = products.find((p) => p.id === item.id);
+    return total + product.price * item.quantity;
+  }, 0);
+}
+
+/* ---------------------------------------------------------
+   5. RENDERING (turning our data into HTML on the page)
+   --------------------------------------------------------- */
+
+// Draw the product grid, optionally filtered by a search term
+function renderProducts(searchTerm = "") {
+  const term = searchTerm.trim().toLowerCase();
+  const filtered = products.filter((p) => p.name.toLowerCase().includes(term));
+
+  productGrid.innerHTML = filtered
+    .map(
+      (product) => `
+      <div class="product-card">
+        <div class="product-image">${product.icon}</div>
+        <p class="product-name">${product.name}</p>
+        <p class="product-price">${formatNaira(product.price)}</p>
+        <button class="add-to-cart-btn" data-id="${product.id}">Add to Cart</button>
+      </div>
+    `
+    )
+    .join("");
+
+  noResults.hidden = filtered.length > 0;
+}
+
+// Draw the cart panel's contents
+function renderCart() {
+  // Update the little number badge on the cart icon
+  const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+  cartCount.textContent = totalItems;
+
+  if (cart.length === 0) {
+    cartItemsEl.innerHTML = `<p class="empty-cart-msg">Your cart is empty.</p>`;
+  } else {
+    cartItemsEl.innerHTML = cart
+      .map((item) => {
+        const product = products.find((p) => p.id === item.id);
+        return `
+          <div class="cart-item">
+            <div class="cart-item-icon">${product.icon}</div>
+            <div class="cart-item-info">
+              <p class="cart-item-name">${product.name}</p>
+              <p class="cart-item-price">${formatNaira(product.price)} each</p>
+              <div class="qty-controls">
+                <button class="qty-btn" data-action="decrease" data-id="${product.id}">−</button>
+                <span>${item.quantity}</span>
+                <button class="qty-btn" data-action="increase" data-id="${product.id}">+</button>
+                <button class="remove-btn" data-action="remove" data-id="${product.id}">Remove</button>
+              </div>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  const total = getCartTotal();
+  cartTotalEl.textContent = formatNaira(total);
+  modalTotalEl.textContent = formatNaira(total);
+}
+
+/* ---------------------------------------------------------
+   6. EVENT LISTENERS (what happens when the customer clicks)
+   --------------------------------------------------------- */
+
+// Search box: re-render products every time the customer types
+searchInput.addEventListener("input", (e) => {
+  renderProducts(e.target.value);
+});
+
+// Add to Cart buttons — we listen on the whole grid because the
+// buttons are recreated every time we render (this is called
+// "event delegation" and saves us from re-attaching listeners)
+productGrid.addEventListener("click", (e) => {
+  if (e.target.matches(".add-to-cart-btn")) {
+    const id = Number(e.target.dataset.id);
+    addToCart(id);
+    openCart();
+  }
+});
+
+// +, -, and Remove buttons inside the cart
+cartItemsEl.addEventListener("click", (e) => {
+  const action = e.target.dataset.action;
+  const id = Number(e.target.dataset.id);
+  if (!action) return;
+
+  if (action === "increase") changeQuantity(id, 1);
+  if (action === "decrease") changeQuantity(id, -1);
+  if (action === "remove") removeFromCart(id);
+});
+
+// Open / close the cart panel
+function openCart() {
+  cartPanel.classList.add("open");
+  cartOverlay.classList.add("open");
+}
+function closeCartPanel() {
+  cartPanel.classList.remove("open");
+  cartOverlay.classList.remove("open");
+}
+
+cartBtn.addEventListener("click", openCart);
+closeCart.addEventListener("click", closeCartPanel);
+cartOverlay.addEventListener("click", closeCartPanel);
+
+// Mobile hamburger menu
+menuToggle.addEventListener("click", () => {
+  mainNav.classList.toggle("open");
+});
+
+/* ---------------------------------------------------------
+   7. CHECKOUT
+   --------------------------------------------------------- */
+
+checkoutBtn.addEventListener("click", () => {
+  if (cart.length === 0) {
+    alert("Your cart is empty. Add a product before checking out.");
+    return;
+  }
+  closeCartPanel();
+  checkoutOverlay.classList.add("open");
+});
+
+closeCheckout.addEventListener("click", () => {
+  checkoutOverlay.classList.remove("open");
+});
+
+// When the customer submits their name, phone, and address
+checkoutForm.addEventListener("submit", (e) => {
+  e.preventDefault(); // stop the page from reloading (the default form behaviour)
+
+  // In a real store, this is where you'd send the order to a server.
+  // For now we just show a success message, as requested.
+  checkoutForm.hidden = true;
+  orderSuccess.hidden = false;
+
+  // Empty the cart, since the order has been "placed"
+  cart = [];
+  saveCart();
+  renderCart();
+});
+
+// Closing the success message resets everything for the next order
+successClose.addEventListener("click", () => {
+  checkoutOverlay.classList.remove("open");
+  checkoutForm.reset();
+  checkoutForm.hidden = false;
+  orderSuccess.hidden = true;
+});
+
+/* ---------------------------------------------------------
+   8. FIRST RENDER
+   Run once when the page loads, so products and any saved
+   cart (from localStorage) show up immediately.
+   --------------------------------------------------------- */
+renderProducts();
+renderCart();
